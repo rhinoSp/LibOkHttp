@@ -29,12 +29,15 @@ public class MainActivity extends AppCompatActivity {
 
     public void onViewClick(View view) {
 //        String url = "https://timgsa.baidu.com/timg?image&quality=80&size=b9999_10000&sec=1560275957304&di=80e1f568bda1dae89bf64699635cd7c2&imgtype=0&src=http%3A%2F%2Fpic37.nipic.com%2F20140113%2F8800276_184927469000_2.png";
-        String url = "https://www.sample-videos.com/index.php#sample-mp4-video";
-        String filePath = getExternalFilesDir(null).getParent() + File.separator + "video.mp4";
+//        String filePath = getExternalFilesDir(null).getParent() + File.separator + "download.png";
+        String url = "http://cdn7.mydown.com/5d01207a/e58ad6d025c0638e1a0f9227e244e338/newsoft/QQ9.1.3.25332.exe";
+        String filePath = getExternalFilesDir(null).getParent() + File.separator + "QQ.exe";
+//        String url = "http://www.mydown.com/soft/432/479673432.shtml#softxzdz";
+//        String filePath = getExternalFilesDir(null).getParent() + File.separator + "video.mp4";
         new OkHttpUtils().downloadFile(url, filePath, new Callback() {
             @Override
-            public void onFileRequestProgressChanged(int progress) {
-                super.onFileRequestProgressChanged(progress);
+            public void onFileRequestProgressChanged(long bytes, long totalBytes, float percent) {
+                super.onFileRequestProgressChanged(bytes, totalBytes, percent);
             }
 
             @Override

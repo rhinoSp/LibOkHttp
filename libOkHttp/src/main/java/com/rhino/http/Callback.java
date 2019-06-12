@@ -23,7 +23,7 @@ public class Callback implements okhttp3.Callback {
 
     }
 
-    public void onFileRequestProgressChanged(int progress) {
+    public void onFileRequestProgressChanged(long bytes, long totalBytes, float percent) {
 
     }
 
