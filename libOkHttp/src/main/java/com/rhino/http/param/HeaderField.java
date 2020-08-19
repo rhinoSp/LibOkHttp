@@ -1,4 +1,4 @@
-package com.rhino.http;
+package com.rhino.http.param;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -11,6 +11,6 @@ import java.lang.annotation.Target;
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.FIELD)
-public @interface ParamField {
+public @interface HeaderField {
     String value() default "";
 }

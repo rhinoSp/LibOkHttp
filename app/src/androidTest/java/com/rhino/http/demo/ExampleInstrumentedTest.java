@@ -1,4 +1,4 @@
-package com.rhino.http;
+package com.rhino.http.demo;
 
 import android.content.Context;
 import android.support.test.InstrumentationRegistry;
@@ -21,6 +21,6 @@ public class ExampleInstrumentedTest {
         // Context of the app under test.
         Context appContext = InstrumentationRegistry.getTargetContext();
 
-        assertEquals("com.rhino.http.test", appContext.getPackageName());
+        assertEquals("com.rhino.http.demo", appContext.getPackageName());
     }
 }

@@ -1,4 +1,4 @@
-package com.rhino.libokhttp;
+package com.rhino.http.demo;
 
 import org.junit.Test;
 

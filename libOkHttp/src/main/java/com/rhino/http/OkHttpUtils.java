@@ -1,21 +1,37 @@
 package com.rhino.http;
 
+import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.text.TextUtils;
-import android.util.Log;
+
+import com.rhino.http.param.FileParams;
+import com.rhino.http.param.FormParams;
+import com.rhino.http.param.HeaderField;
+import com.rhino.http.param.HttpParams;
+import com.rhino.http.param.JsonParams;
+import com.rhino.http.param.ParamField;
+import com.rhino.log.LogUtils;
 
 import java.io.Closeable;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
+import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.SSLSession;
+
+import okhttp3.Cache;
+import okhttp3.CacheControl;
 import okhttp3.Call;
 import okhttp3.FormBody;
+import okhttp3.Interceptor;
 import okhttp3.MediaType;
 import okhttp3.MultipartBody;
 import okhttp3.OkHttpClient;
@@ -32,158 +48,372 @@ import okio.Sink;
 
 /**
  * <p>The utils of HTTP.</p>
+ * <p>
+ * android.permission.INTERNET
+ * android.permission.ACCESS_NETWORK_STATE
+ * android.permission.WRITE_EXTERNAL_STORAGE
+ * android.permission.READ_EXTERNAL_STORAGE
  *
  * @author LuoLin
  * @since Create on 2019/6/12.
  */
 public class OkHttpUtils {
 
-    public static final String TAG = OkHttpUtils.class.getSimpleName();
-    public static final MediaType MEDIA_TYPE = MediaType.parse("application/json; charset=utf-8");
-    public static final int DEFAULT_TIMEOUT_TIME = 60;
+    protected static final String TAG = OkHttpUtils.class.getSimpleName();
+    protected static final MediaType MEDIA_TYPE = MediaType.parse("application/json; charset=utf-8");
+    protected static final int DEFAULT_TIMEOUT_TIME = 60;
 
-    public OkHttpClient mOkHttpClient;
+    protected Context mContext;
+    protected OkHttpClient.Builder builder;
+    protected OkHttpClient okHttpClient;
 
-    public OkHttpUtils() {
-        mOkHttpClient = new OkHttpClient.Builder()
-                .connectTimeout(DEFAULT_TIMEOUT_TIME, TimeUnit.SECONDS)
-                .readTimeout(DEFAULT_TIMEOUT_TIME, TimeUnit.SECONDS)
-                .writeTimeout(DEFAULT_TIMEOUT_TIME, TimeUnit.SECONDS)
-                .build();
+    protected File cacheDirectoryFile;
+    protected int cacheMaxAge = 60 * 60; // 1h
+    protected int cacheMaxSize = 1024 * 1024 * 10; // 10MB
+    protected String[] cacheGetUrls;
+
+    public OkHttpUtils(@NonNull Context context) {
+        this(context, null, null);
     }
 
-    public void doPost(String url, Callback callback) {
-        doPost(url, null, callback);
+    public OkHttpUtils(@NonNull Context context, @NonNull OkHttpClient.Builder builder) {
+        this(context, builder, null);
     }
 
-    public void doPost(String url, HttpParams params, okhttp3.Callback callback) {
-        Log.i(TAG, "-------------------------------------------------");
-        Log.i(TAG, "url = " + url);
-        Request.Builder requestBuilder = new Request.Builder().url(url);
-        FormBody.Builder bodyBuilder = new FormBody.Builder();
-        if (params != null) {
-            Class<? extends HttpParams> clazz = params.getClass();
-            Field fields[] = clazz.getDeclaredFields();
-            for (Field field : fields) {
-                field.setAccessible(true);
-                ParamField paramField = field.getAnnotation(ParamField.class);
-                if (paramField != null && !TextUtils.isEmpty(paramField.value())) {
-                    try {
-                        Log.i(TAG, paramField.value() + " = " + field.get(params));
-                        bodyBuilder.add(paramField.value(), String.valueOf(field.get(params)));
-                    } catch (IllegalAccessException e) {
-                        e.printStackTrace();
-                    }
+    public OkHttpUtils(@NonNull Context context, @NonNull String[] cacheGetUrls) {
+        this(context, null, cacheGetUrls);
+    }
+
+    public OkHttpUtils(@NonNull Context context, @Nullable OkHttpClient.Builder builder, @Nullable String[] cacheGetUrls) {
+        this.mContext = context.getApplicationContext();
+        this.builder = builder == null ? buildBuilder() : builder;
+        this.cacheGetUrls = cacheGetUrls;
+        init();
+    }
+
+    protected void init() {
+        if (cacheGetUrls != null && cacheGetUrls.length > 0) {
+            cacheDirectoryFile = new File(mContext.getCacheDir().getAbsolutePath(), "OkHttpGetCache");
+            Cache cache = new Cache(cacheDirectoryFile, cacheMaxSize);
+            builder.cache(cache)
+                    .addInterceptor(new RequestHeaderInterceptor())
+                    .addNetworkInterceptor(new NetCacheInterceptor());
+        }
+        okHttpClient = builder.build();
+    }
+
+    protected OkHttpClient.Builder buildBuilder() {
+        return getNormalBuilder()
+                .sslSocketFactory(SSLUtils.createSSLSocketFactory())
+                .hostnameVerifier(new SSLUtils.TrustAllHostnameVerifier());
+    }
+
+    public OkHttpClient getOkHttpClient() {
+        return okHttpClient;
+    }
+
+    public void cancelRequest(Object... tags) {
+        if (okHttpClient == null || tags == null) {
+            return;
+        }
+        for (Object tag : tags) {
+            for (Call call : okHttpClient.dispatcher().queuedCalls()) {
+                Object t = call.request().tag();
+                if (t != null && t.equals(tag)) {
+                    LogUtils.w(TAG, "Cancel request: " + t.toString());
+                    call.cancel();
+                }
+            }
+            for (Call call : okHttpClient.dispatcher().runningCalls()) {
+                Object t = call.request().tag();
+                if (t != null && t.equals(tag)) {
+                    LogUtils.w(TAG, "Cancel request: " + t.toString());
+                    call.cancel();
                 }
             }
         }
-        Request mRequest = requestBuilder.post(bodyBuilder.build()).build();
-        mOkHttpClient.newCall(mRequest).enqueue(callback);
-        Log.i(TAG, "-------------------------------------------------");
     }
 
-    public void doPostByMap(String url, Map<String, String> paramsMap, Callback callback) {
-        Log.i(TAG, "-------------------------------------------------");
-        Log.i(TAG, "url = " + url);
-        Request.Builder requestBuilder = new Request.Builder().url(url);
-        FormBody.Builder bodyBuilder = new FormBody.Builder();
-        if (paramsMap != null) {
-            for (Map.Entry<String, String> entry : paramsMap.entrySet()) {
-                bodyBuilder.add(entry.getKey(), entry.getValue());
-                Log.i(TAG, entry.getKey() + " = " + entry.getValue());
+    public void doPost(String url, CallBack callBack) {
+        doPost(url, null, callBack);
+    }
+
+    public void doPost(String url, HttpParams param, CallBack callBack) {
+        doPost(url, url, param, callBack);
+    }
+
+    public void doPost(String url, Object tag, HttpParams param, CallBack callBack) {
+        if (param instanceof FileParams) {
+            uploadFile(url, tag, (FileParams) param, callBack);
+        } else {
+            LogUtils.i(TAG, "-------------------------------------------------");
+            LogUtils.i(TAG, "url = " + url);
+            if (param instanceof JsonParams) {
+                Request.Builder requestBuilder = buildRequestBuilder(param).url(url).tag(tag);
+                String bodyJson = ((JsonParams) param).bodyJson;
+                LogUtils.i(TAG, "BODY: " + bodyJson);
+                RequestBody requestBody = RequestBody.create(MEDIA_TYPE, bodyJson);
+                Request request = requestBuilder.post(requestBody).build();
+                callBack.onStart(url, tag, param);
+                okHttpClient.newCall(request).enqueue(callBack);
+            } else {
+                Request.Builder requestBuilder = buildRequestBuilder(param).url(url).tag(tag);
+                FormBody.Builder bodyBuilder = buildFormBodyBuilder(param);
+                Request request = requestBuilder.post(bodyBuilder.build()).build();
+                callBack.onStart(url, tag, param);
+                okHttpClient.newCall(request).enqueue(callBack);
+            }
+            LogUtils.i(TAG, "-------------------------------------------------");
+        }
+    }
+
+    public String doPostSync(String url, HttpParams param) {
+        LogUtils.i(TAG, "-------------------------------------------------");
+        LogUtils.i(TAG, "url = " + url);
+        okhttp3.Request.Builder requestBuilder = this.buildRequestBuilder(param).url(url);
+        Request request;
+        if (param instanceof JsonParams) {
+            String bodyJson = ((JsonParams) param).bodyJson;
+            LogUtils.i(TAG, "BODY: " + bodyJson);
+            RequestBody requestBody = RequestBody.create(MEDIA_TYPE, bodyJson);
+            request = requestBuilder.post(requestBody).build();
+        } else {
+            okhttp3.FormBody.Builder bodyBuilder = this.buildFormBodyBuilder(param);
+            request = requestBuilder.post(bodyBuilder.build()).build();
+        }
+        try {
+            return okHttpClient.newCall(request).execute().body().string();
+        } catch (Exception e) {
+            LogUtils.e(TAG, e);
+        }
+        LogUtils.i(TAG, "-------------------------------------------------");
+        return "";
+    }
+
+    public void doPut(String url, HttpParams param, CallBack callBack) {
+        doPut(url, null, param, callBack);
+    }
+
+    public void doPut(String url, Object tag, HttpParams param, CallBack callBack) {
+        LogUtils.i(TAG, "-------------------------------------------------");
+        LogUtils.i(TAG, "url = " + url);
+        okhttp3.Request.Builder requestBuilder = buildRequestBuilder(param).url(url).tag(tag);
+        Request request;
+        if (param instanceof JsonParams) {
+            String bodyJson = ((JsonParams) param).bodyJson;
+            LogUtils.i(TAG, "BODY: " + bodyJson);
+            RequestBody requestBody = RequestBody.create(MEDIA_TYPE, bodyJson);
+            request = requestBuilder.put(requestBody).build();
+        } else {
+            okhttp3.FormBody.Builder bodyBuilder = buildFormBodyBuilder(param);
+            request = requestBuilder.put(bodyBuilder.build()).build();
+        }
+        callBack.onStart(url, tag, param);
+        this.okHttpClient.newCall(request).enqueue(callBack);
+        LogUtils.i(TAG, "-------------------------------------------------");
+    }
+
+    public String doPutSync(String url, Object tag, HttpParams param) {
+        LogUtils.i(TAG, "-------------------------------------------------");
+        LogUtils.i(TAG, "url = " + url);
+        okhttp3.Request.Builder requestBuilder = buildRequestBuilder(param).url(url).tag(tag);
+        Request request;
+        if (param instanceof JsonParams) {
+            String bodyJson = ((JsonParams) param).bodyJson;
+            LogUtils.i(TAG, "BODY: " + bodyJson);
+            RequestBody requestBody = RequestBody.create(MEDIA_TYPE, bodyJson);
+            request = requestBuilder.put(requestBody).build();
+        } else {
+            okhttp3.FormBody.Builder bodyBuilder = buildFormBodyBuilder(param);
+            request = requestBuilder.put(bodyBuilder.build()).build();
+        }
+        try {
+            return okHttpClient.newCall(request).execute().body().string();
+        } catch (Exception e) {
+            LogUtils.e(TAG, e);
+        }
+        LogUtils.i(TAG, "-------------------------------------------------");
+        return "";
+    }
+
+    public void doDelete(String url, HttpParams param, CallBack callBack) {
+        doDelete(url, null, param, callBack);
+    }
+
+    public void doDelete(String url, Object tag, HttpParams param, CallBack callBack) {
+        LogUtils.i(TAG, "-------------------------------------------------");
+        LogUtils.i(TAG, "url = " + url);
+        okhttp3.Request.Builder requestBuilder = buildRequestBuilder(param).url(url).tag(tag);
+        Request request;
+        if (param instanceof JsonParams) {
+            String bodyJson = ((JsonParams) param).bodyJson;
+            LogUtils.i(TAG, "BODY: " + bodyJson);
+            RequestBody requestBody = RequestBody.create(MEDIA_TYPE, bodyJson);
+            request = requestBuilder.delete(requestBody).build();
+        } else {
+            okhttp3.FormBody.Builder bodyBuilder = buildFormBodyBuilder(param);
+            request = requestBuilder.delete(bodyBuilder.build()).build();
+        }
+        callBack.onStart(url, tag, param);
+        okHttpClient.newCall(request).enqueue(callBack);
+        LogUtils.i(TAG, "-------------------------------------------------");
+    }
+
+    public String doDeleteSync(String url, Object tag, HttpParams param) {
+        LogUtils.i(TAG, "-------------------------------------------------");
+        LogUtils.i(TAG, "url = " + url);
+        okhttp3.Request.Builder requestBuilder = buildRequestBuilder(param).url(url).tag(tag);
+        Request request;
+        if (param instanceof JsonParams) {
+            String bodyJson = ((JsonParams) param).bodyJson;
+            LogUtils.i(TAG, "BODY: " + bodyJson);
+            RequestBody requestBody = RequestBody.create(MEDIA_TYPE, bodyJson);
+            request = requestBuilder.delete(requestBody).build();
+        } else {
+            okhttp3.FormBody.Builder bodyBuilder = buildFormBodyBuilder(param);
+            request = requestBuilder.delete(bodyBuilder.build()).build();
+        }
+        try {
+            return okHttpClient.newCall(request).execute().body().string();
+        } catch (Exception e) {
+            LogUtils.e(TAG, e);
+        }
+        LogUtils.i(TAG, "-------------------------------------------------");
+        return "";
+    }
+
+    public void doGet(String url, CallBack callBack) {
+        doGet(url, null, callBack);
+    }
+
+    public void doGet(String url, @Nullable HttpParams param, CallBack callBack) {
+        doGet(url, url, param, callBack);
+    }
+
+    public void doGet(String url, Object tag, @Nullable HttpParams param, CallBack callBack) {
+        LogUtils.i(TAG, "-------------------------------------------------");
+        String httpUrl = buildHttpUrl(url, param);
+        LogUtils.i(TAG, "url = " + httpUrl);
+        Request.Builder requestBuilder = buildRequestBuilder(param).url(httpUrl).tag(tag);
+        Request request = requestBuilder.build();
+        callBack.onStart(url, tag, param);
+        okHttpClient.newCall(request).enqueue(callBack);
+        LogUtils.i(TAG, "-------------------------------------------------");
+    }
+
+    public String doGetSync(String url, Object tag, @Nullable HttpParams param, CallBack callBack) {
+        LogUtils.i(TAG, "-------------------------------------------------");
+        String httpUrl = buildHttpUrl(url, param);
+        LogUtils.i(TAG, "url = " + httpUrl);
+        Request.Builder requestBuilder = buildRequestBuilder(param).url(httpUrl).tag(tag);
+        Request request = requestBuilder.build();
+        try {
+            return okHttpClient.newCall(request).execute().body().string();
+        } catch (Exception e) {
+            LogUtils.e(TAG, e);
+        }
+        LogUtils.i(TAG, "-------------------------------------------------");
+        return "";
+    }
+
+    public void uploadFile(final String url, FileParams param, CallBack callBack) {
+        uploadFile(url, url, param, callBack);
+    }
+
+    public void uploadFile(final String url, Object tag, FileParams param, CallBack callBack) {
+        LogUtils.i(TAG, "-------------------------------------------------");
+        LogUtils.i(TAG, "url = " + url);
+        Request.Builder requestBuilder = buildRequestBuilder(param).url(url).tag(tag);
+        MultipartBody.Builder bodyBuilder = buildMultipartBodyBuilder(param)
+                .setType(MultipartBody.FORM);
+        if (param != null && param.fileMap != null) {
+            Map<String, List<File>> fileMap = param.fileMap;
+            for (Map.Entry<String, List<File>> entry : fileMap.entrySet()) {
+                List<File> list = entry.getValue();
+                for (File f : list) {
+                    LogUtils.i(TAG, "filePath = " + f.getPath());
+                    bodyBuilder.addFormDataPart(entry.getKey(), f.getName(), RequestBody.create(MediaType.parse(param.mediaType), f));
+                }
             }
         }
-        Request mRequest = requestBuilder.post(bodyBuilder.build()).build();
-        mOkHttpClient.newCall(mRequest).enqueue(callback);
-        Log.i(TAG, "-------------------------------------------------");
-    }
-
-    public void doPostByJson(String url, String json, Callback callback) {
-        Log.i(TAG, "-------------------------------------------------");
-        Log.i(TAG, "url = " + url);
-        Log.i(TAG, "json = " + json);
-        RequestBody requestBody = RequestBody.create(MEDIA_TYPE, json);
-        Request.Builder requestBuilder = new Request.Builder().url(url);
-        Request mRequest = requestBuilder.post(requestBody).build();
-        mOkHttpClient.newCall(mRequest).enqueue(callback);
-        Log.i(TAG, "-------------------------------------------------");
-    }
-
-    public void doGet(String url, HttpParams params, Callback callback) {
-        doGet(buildHttpUrl(url, params, null), callback);
-    }
-
-    public void doGetByMap(String url, Map<String, String> paramsMap, Callback callback) {
-        doGet(buildHttpUrl(url, null, paramsMap), callback);
-    }
-
-    public void doGet(String url, Callback callback) {
-        Log.i(TAG, "-------------------------------------------------");
-        Log.i(TAG, "url = " + url);
-        Request.Builder requestBuilder = new Request.Builder().url(url);
-        Request request = requestBuilder.build();
-        mOkHttpClient.newCall(request).enqueue(callback);
-        Log.i(TAG, "-------------------------------------------------");
-    }
-
-    public void uploadFile(final String url, Map<String, String> paramsMap, final File file, Callback callback) {
-        Log.i(TAG, "-------------------------------------------------");
-        String httpUrl = buildHttpUrl(url, null, paramsMap);
-        Log.i(TAG, "url = " + httpUrl);
-        Log.i(TAG, "filePath = " + file.getPath());
-        Request.Builder requestBuilder = new Request.Builder().url(httpUrl);
-        RequestBody requestBody = new MultipartBody.Builder()
-                .setType(MultipartBody.FORM)
-                .addFormDataPart("file", file.getName(),
-                        RequestBody.create(MediaType.parse("multipart/form-data"), file))
-                .build();
-        Request request = requestBuilder.header("Authorization", "Client-ID " + UUID.randomUUID())
-                .url(httpUrl)
-                .post(new FileProgressRequestBody(requestBody, file, callback)).build();
-        mOkHttpClient.newCall(request).enqueue(callback);
-        Log.i(TAG, "-------------------------------------------------");
-    }
-
-    public void downloadFile(final String url, final String filePath, final Callback callback) {
-        Log.i(TAG, "-------------------------------------------------");
-        Log.i(TAG, "url = " + url);
-        Log.i(TAG, "filePath = " + filePath);
-        Request request = new Request.Builder().url(url).build();
-        mOkHttpClient.newCall(request).enqueue(new okhttp3.Callback() {
+        Request request = requestBuilder.url(url)
+                .post(new FileProgressRequestBody(bodyBuilder.build(), callBack)).build();
+        callBack.onStart(url, tag, param);
+        okHttpClient.newCall(request).enqueue(new CallBack() {
             @Override
             public void onFailure(Call call, IOException e) {
-                Log.e(TAG, e.toString());
-                callback.onFailure(call, e);
-                callback.onError(e.toString());
+                LogUtils.e(TAG, e.toString());
+                callBack.onFailure(call, e);
+                callBack.onFileFailure(e.getMessage());
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                callBack.onResponse(call, response);
+            }
+        });
+        LogUtils.i(TAG, "-------------------------------------------------");
+    }
+
+    public void downloadFile(final String url, final String saveFilePath, final CallBack callBack) {
+        downloadFile(url, null, saveFilePath, callBack);
+    }
+
+    public void downloadFile(final String url, HttpParams param, final String saveFilePath, final CallBack callBack) {
+        downloadFile(url, url, param, saveFilePath, callBack);
+    }
+
+    public void downloadFile(final String url, Object tag, HttpParams param, final String saveFilePath, final CallBack callBack) {
+        LogUtils.i(TAG, "-------------------------------------------------");
+        LogUtils.i(TAG, "url = " + url);
+        LogUtils.i(TAG, "saveFilePath = " + saveFilePath);
+        Request.Builder requestBuilder = buildRequestBuilder(param).url(url).tag(tag);
+        FormBody.Builder bodyBuilder = buildFormBodyBuilder(param);
+        FormBody formBody = bodyBuilder.build();
+        Request request = requestBuilder.build();
+        if (formBody.size() > 0) {
+            request = requestBuilder.post(formBody).build();
+        }
+        callBack.onStart(url, tag, param);
+        okHttpClient.newCall(request).enqueue(new CallBack() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                LogUtils.e(TAG, e.toString());
+                callBack.onFailure(call, e);
+                callBack.onFileFailure(e.getMessage());
             }
 
             @Override
             public void onResponse(Call call, Response response) {
-                Log.i(TAG, "-------------------------------------------------");
-                ProgressResponseBody responseBody = new ProgressResponseBody(response.body(), callback);
+                FileProgressResponseBody responseBody = new FileProgressResponseBody(response.body(), callBack);
                 BufferedSource source = responseBody.source();
                 try {
-                    callback.onResponse(call, response);
-                    File outFile = new File(filePath);
-                    outFile.delete();
-                    outFile.getParentFile().mkdirs();
-                    outFile.createNewFile();
-                    BufferedSink sink = Okio.buffer(Okio.sink(outFile));
+                    callBack.onResponse(call, response);
+                    File saveFile = new File(saveFilePath);
+                    if (!saveFile.delete()) {
+                        LogUtils.e(TAG, "delete file failed.");
+                    }
+                    if (!saveFile.getParentFile().exists() && !saveFile.getParentFile().mkdirs()) {
+                        LogUtils.e(TAG, "makdir failed.");
+                    }
+                    if (!saveFile.createNewFile()) {
+                        LogUtils.e(TAG, "create file failed.");
+                    }
+                    BufferedSink sink = Okio.buffer(Okio.sink(saveFile));
                     source.readAll(sink);
                     sink.flush();
                     source.close();
-                    Log.i(TAG, "Download file success");
-                    Log.i(TAG, "-------------------------------------------------");
-                    callback.onFileRequestSuccess(outFile);
+                    LogUtils.i(TAG, "Download file finish");
+                    callBack.onFileRequestFinish(saveFile);
                 } catch (Exception e) {
-                    Log.i(TAG, e.toString());
-                    callback.onError(e.getMessage());
+                    LogUtils.e(TAG, e.toString());
+                    callBack.onFileFailure(e.getMessage());
                 } finally {
                     closeQuietly(source);
                 }
             }
         });
-        Log.i(TAG, "-------------------------------------------------");
+        LogUtils.i(TAG, "-------------------------------------------------");
     }
 
     public static void closeQuietly(Closeable closeable) {
@@ -195,30 +425,50 @@ public class OkHttpUtils {
         }
     }
 
-    private String buildHttpUrl(String url, HttpParams params, Map<String, String> paramsMap) {
+    private String buildHttpUrl(String url, @Nullable HttpParams param) {
         StringBuilder httpUrl = new StringBuilder(url);
-        if (params != null) {
-            Class<? extends HttpParams> clazz = params.getClass();
-            Field fields[] = clazz.getDeclaredFields();
-            httpUrl.append("?");
+        if (param != null) {
+            Class<? extends HttpParams> cls = param.getClass();
+            Field[] fields = cls.getDeclaredFields();
             for (Field field : fields) {
                 field.setAccessible(true);
-                ParamField json = field.getAnnotation(ParamField.class);
-                if (json != null && !TextUtils.isEmpty(json.value())) {
+                ParamField paramField = field.getAnnotation(ParamField.class);
+                if (paramField != null && !TextUtils.isEmpty(paramField.value())) {
                     try {
-                        httpUrl.append(json.value() + "=" + field.get(params) + "&");
+                        if (httpUrl.toString().equals(url)) {
+                            httpUrl.append("?");
+                        }
+                        if (field.getType().equals(String[].class)) {
+                            String[] arr = (String[]) field.get(param);
+                            for (int i = 0; i < arr.length; i++) {
+                                if (i != 0) {
+                                    httpUrl.append("?");
+                                }
+                                httpUrl.append(paramField.value() + "[" + i + "]").append("=").append(getNotNullValue(arr[i])).append("&");
+                            }
+                        } else {
+                            httpUrl.append(paramField.value()).append("=").append(getNotNullFileValue(field, param)).
+                                    append("&");
+                        }
+
                     } catch (IllegalAccessException e) {
-                        e.printStackTrace();
+                        LogUtils.e(e);
                     }
                 }
             }
-        }
-        if (paramsMap != null) {
-            for (Map.Entry<String, String> entry : paramsMap.entrySet()) {
-                if (httpUrl.toString().equals(url)) {
-                    httpUrl.append("?");
+            Map<String, String> formBodyMap = null;
+            if (param instanceof FormParams && ((FormParams) param).formBodyMap != null) {
+                formBodyMap = ((FormParams) param).formBodyMap;
+            } else if (param instanceof FileParams && ((FileParams) param).formBodyMap != null) {
+                formBodyMap = ((FileParams) param).formBodyMap;
+            }
+            if (formBodyMap != null) {
+                for (Map.Entry<String, String> entry : formBodyMap.entrySet()) {
+                    if (httpUrl.toString().equals(url)) {
+                        httpUrl.append("?");
+                    }
+                    httpUrl.append(entry.getKey()).append("=").append(getNotNullValue(entry.getValue())).append("&");
                 }
-                httpUrl.append(entry.getKey() + "=" + entry.getValue() + "&");
             }
         }
         if (httpUrl.toString().endsWith("&")) {
@@ -227,27 +477,157 @@ public class OkHttpUtils {
         return httpUrl.toString();
     }
 
+    private Request.Builder buildRequestBuilder(HttpParams param) {
+        Request.Builder requestBuilder = new Request.Builder();
+        if (param != null) {
+            Class<? extends HttpParams> clazz = param.getClass();
+            Field[] fields = clazz.getDeclaredFields();
+            for (Field field : fields) {
+                field.setAccessible(true);
+                HeaderField headerField = field.getAnnotation(HeaderField.class);
+                if (headerField != null && !TextUtils.isEmpty(headerField.value())) {
+                    try {
+                        if (field.getType().equals(String[].class)) {
+                            String[] arr = (String[]) field.get(param);
+                            for (int i = 0; i < arr.length; i++) {
+                                LogUtils.i(TAG, "HEADER: " + headerField.value() + "[" + i + "]" + " = " + getNotNullValue(arr[i]));
+                                requestBuilder.addHeader(headerField.value() + "[" + i + "]", getNotNullValue(arr[i]));
+                            }
+                        } else {
+                            LogUtils.i(TAG, "HEADER: " + headerField.value() + " = " + getNotNullFileValue(field, param));
+                            requestBuilder.addHeader(headerField.value(), getNotNullFileValue(field, param));
+                        }
+
+                    } catch (IllegalAccessException e) {
+                        LogUtils.e(e);
+                    }
+                }
+            }
+            if (param.headerMap != null) {
+                for (Map.Entry<String, String> entry : param.headerMap.entrySet()) {
+                    LogUtils.i(TAG, "HEADER: " + entry.getKey() + " = " + getNotNullValue(entry.getValue()));
+                    requestBuilder.addHeader(entry.getKey(), getNotNullValue(entry.getValue()));
+                }
+            }
+        }
+        return requestBuilder;
+    }
+
+    private FormBody.Builder buildFormBodyBuilder(HttpParams param) {
+        FormBody.Builder bodyBuilder = new FormBody.Builder();
+        if (param != null) {
+            Class<? extends HttpParams> clazz = param.getClass();
+            Field[] fields = clazz.getDeclaredFields();
+            for (Field field : fields) {
+                field.setAccessible(true);
+                ParamField paramField = field.getAnnotation(ParamField.class);
+                if (paramField != null && !TextUtils.isEmpty(paramField.value())) {
+                    try {
+                        if (field.getType().equals(String[].class)) {
+                            String[] arr = (String[]) field.get(param);
+                            for (int i = 0; i < arr.length; i++) {
+                                LogUtils.i(TAG, "BODY: " + paramField.value() + "[" + i + "]" + " = " + getNotNullValue(arr[i]));
+                                bodyBuilder.add(paramField.value() + "[" + i + "]", getNotNullValue(arr[i]));
+                            }
+                        } else {
+                            LogUtils.i(TAG, "BODY: " + paramField.value() + " = " + getNotNullFileValue(field, param));
+                            bodyBuilder.add(paramField.value(), getNotNullFileValue(field, param));
+                        }
+                    } catch (IllegalAccessException e) {
+                        LogUtils.e(e);
+                    }
+                }
+            }
+            Map<String, String> formBodyMap = null;
+            if (param instanceof FormParams && ((FormParams) param).formBodyMap != null) {
+                formBodyMap = ((FormParams) param).formBodyMap;
+            } else if (param instanceof FileParams && ((FileParams) param).formBodyMap != null) {
+                formBodyMap = ((FileParams) param).formBodyMap;
+            }
+            if (formBodyMap != null) {
+                for (Map.Entry<String, String> entry : formBodyMap.entrySet()) {
+                    LogUtils.i(TAG, "BODY: " + entry.getKey() + " = " + getNotNullValue(entry.getValue()));
+                    bodyBuilder.add(entry.getKey(), getNotNullValue(entry.getValue()));
+                }
+            }
+        }
+        return bodyBuilder;
+    }
+
+    private MultipartBody.Builder buildMultipartBodyBuilder(HttpParams param) {
+        MultipartBody.Builder bodyBuilder = new MultipartBody.Builder();
+        if (param != null) {
+            Class<? extends HttpParams> clazz = param.getClass();
+            Field[] fields = clazz.getDeclaredFields();
+            for (Field field : fields) {
+                field.setAccessible(true);
+                ParamField paramField = field.getAnnotation(ParamField.class);
+                if (paramField != null && !TextUtils.isEmpty(paramField.value())) {
+                    try {
+                        if (field.getType().equals(String[].class)) {
+                            String[] arr = (String[]) field.get(param);
+                            for (int i = 0; i < arr.length; i++) {
+                                LogUtils.i(TAG, "BODY: " + paramField.value() + "[" + i + "]" + " = " + getNotNullValue(arr[i]));
+                                bodyBuilder.addFormDataPart(paramField.value() + "[" + i + "]", getNotNullValue(arr[i]));
+                            }
+                        } else {
+                            LogUtils.i(TAG, "BODY: " + paramField.value() + " = " + getNotNullFileValue(field, param));
+                            bodyBuilder.addFormDataPart(paramField.value(), getNotNullFileValue(field, param));
+                        }
+                    } catch (IllegalAccessException e) {
+                        LogUtils.e(e);
+                    }
+                }
+            }
+            Map<String, String> formBodyMap = null;
+            if (param instanceof FormParams && ((FormParams) param).formBodyMap != null) {
+                formBodyMap = ((FormParams) param).formBodyMap;
+            } else if (param instanceof FileParams && ((FileParams) param).formBodyMap != null) {
+                formBodyMap = ((FileParams) param).formBodyMap;
+            }
+            if (formBodyMap != null) {
+                for (Map.Entry<String, String> entry : formBodyMap.entrySet()) {
+                    LogUtils.i(TAG, "BODY: " + entry.getKey() + " = " + getNotNullValue(entry.getValue()));
+                    bodyBuilder.addFormDataPart(entry.getKey(), getNotNullValue(entry.getValue()));
+                }
+            }
+        }
+        return bodyBuilder;
+    }
+
+    private String getNotNullFileValue(Field field, HttpParams param) {
+        try {
+            String value = String.valueOf(field.get(param));
+            return "null".equals(value) ? "" : value;
+        } catch (IllegalAccessException e) {
+            e.printStackTrace();
+        }
+        return "";
+    }
+
+    private String getNotNullValue(String value) {
+        return value == null || "null".equals(value) ? "" : value;
+    }
+
     public class FileProgressRequestBody extends RequestBody {
 
-        private RequestBody mDelegate;
-        private Callback mCallback;
-        private File mFile;
+        private RequestBody requestBody;
+        private CallBack callBack;
 
-        FileProgressRequestBody(RequestBody delegate, File file, Callback callback) {
-            mDelegate = delegate;
-            mFile = file;
-            mCallback = callback;
+        FileProgressRequestBody(RequestBody requestBody, CallBack callBack) {
+            this.requestBody = requestBody;
+            this.callBack = callBack;
         }
 
         @Override
         public MediaType contentType() {
-            return mDelegate.contentType();
+            return requestBody.contentType();
         }
 
         @Override
         public long contentLength() {
             try {
-                return mDelegate.contentLength();
+                return requestBody.contentLength();
             } catch (IOException e) {
                 return -1;
             }
@@ -259,13 +639,13 @@ public class OkHttpUtils {
             try {
                 bufferedSink = Okio.buffer(new MyForwardingSink(sink, contentLength()));
                 bufferedSink.timeout().timeout(120, TimeUnit.SECONDS);
-                mDelegate.writeTo(bufferedSink);
+                requestBody.writeTo(bufferedSink);
                 bufferedSink.flush();
-                Log.i(TAG, "Upload file success " + mFile.toString() + mDelegate.toString());
-                mCallback.onFileRequestSuccess(mFile);
+                LogUtils.i(TAG, "Upload file finish");
+                callBack.onFileRequestFinish(null);
             } catch (IOException e) {
-                Log.e(TAG, e.getMessage());
-                mCallback.onError(e.getMessage());
+                LogUtils.e(TAG, e.getMessage());
+                callBack.onFileFailure(e.getMessage());
                 closeQuietly(bufferedSink);
                 closeQuietly(sink);
                 throw e;
@@ -286,20 +666,20 @@ public class OkHttpUtils {
                 super.write(buffer, byteCount);
                 writeBytes += byteCount;
                 float percent = 1F * writeBytes / totalBytes;
-                Log.i(TAG, "Upload file totalBytes = " + writeBytes + ", totalBytes = " + totalBytes + ", percent = " + percent);
-                mCallback.onFileRequestProgressChanged(totalBytes, totalBytes, percent);
+                LogUtils.i(TAG, "Upload file totalBytes = " + writeBytes + ", totalBytes = " + totalBytes + ", percent = " + percent);
+                callBack.onFileRequestProgressChanged(totalBytes, totalBytes, percent);
             }
         }
     }
 
-    public class ProgressResponseBody extends ResponseBody {
+    public class FileProgressResponseBody extends ResponseBody {
         private final ResponseBody responseBody;
         private BufferedSource progressSource;
-        private Callback callback;
+        private CallBack callBack;
 
-        ProgressResponseBody(ResponseBody responseBody, Callback callback) {
+        FileProgressResponseBody(ResponseBody responseBody, CallBack callBack) {
             this.responseBody = responseBody;
-            this.callback = callback;
+            this.callBack = callBack;
         }
 
         @Override
@@ -314,10 +694,10 @@ public class OkHttpUtils {
 
         @Override
         public BufferedSource source() {
-            if (callback == null) {
+            if (callBack == null) {
                 return responseBody.source();
             }
-            ProgressInputStream progressInputStream = new ProgressInputStream(responseBody.source().inputStream(), callback, contentLength());
+            ProgressInputStream progressInputStream = new ProgressInputStream(responseBody.source().inputStream(), callBack, contentLength());
             progressSource = Okio.buffer(Okio.source(progressInputStream));
             return progressSource;
         }
@@ -329,13 +709,13 @@ public class OkHttpUtils {
 
         protected final class ProgressInputStream extends InputStream {
             private final InputStream stream;
-            private final Callback callback;
+            private final CallBack callBack;
             private long totalBytes;
             private long readBytes = 0;
 
-            ProgressInputStream(InputStream stream, Callback callback, long totalBytes) {
+            ProgressInputStream(InputStream stream, CallBack callBack, long totalBytes) {
                 this.stream = stream;
-                this.callback = callback;
+                this.callBack = callBack;
                 this.totalBytes = totalBytes;
             }
 
@@ -343,15 +723,15 @@ public class OkHttpUtils {
             public int read() throws IOException {
                 int read = this.stream.read();
                 if (this.totalBytes < 0) {
-                    Log.e(TAG, "File total size is " + totalBytes);
-                    this.callback.onFileRequestProgressChanged(-1, -1, -1);
+                    LogUtils.e(TAG, "File total size is " + totalBytes);
+                    this.callBack.onFileRequestProgressChanged(-1, -1, -1);
                     return read;
                 }
                 if (read >= 0) {
                     this.readBytes++;
                     float percent = 1F * readBytes / totalBytes;
-                    Log.i(TAG, "Download file readBytes = " + readBytes + ", totalBytes = " + totalBytes + ", percent = " + percent);
-                    this.callback.onFileRequestProgressChanged(readBytes, totalBytes, percent);
+                    LogUtils.i(TAG, "Download file readBytes = " + readBytes + ", totalBytes = " + totalBytes + ", percent = " + percent);
+                    this.callBack.onFileRequestProgressChanged(readBytes, totalBytes, percent);
                 }
                 return read;
             }
@@ -360,15 +740,15 @@ public class OkHttpUtils {
             public int read(byte[] b, int off, int len) throws IOException {
                 int read = this.stream.read(b, off, len);
                 if (this.totalBytes < 0) {
-                    Log.e(TAG, "File total size is " + totalBytes);
-                    this.callback.onFileRequestProgressChanged(-1, -1, -1);
+                    LogUtils.e(TAG, "File total size is " + totalBytes);
+                    this.callBack.onFileRequestProgressChanged(-1, -1, -1);
                     return read;
                 }
                 if (read >= 0) {
                     this.readBytes += read;
                     float percent = 1F * readBytes / totalBytes;
-                    Log.i(TAG, "Download file readBytes = " + readBytes + ", totalBytes = " + totalBytes + ", percent = " + percent);
-                    this.callback.onFileRequestProgressChanged(readBytes, totalBytes, percent);
+                    LogUtils.i(TAG, "Download file readBytes = " + readBytes + ", totalBytes = " + totalBytes + ", percent = " + percent);
+                    this.callBack.onFileRequestProgressChanged(readBytes, totalBytes, percent);
                 }
                 return read;
             }
@@ -378,6 +758,99 @@ public class OkHttpUtils {
                 closeQuietly(stream);
             }
         }
+    }
+
+    public class RequestHeaderInterceptor implements Interceptor {
+        @Override
+        public Response intercept(@NonNull Chain chain) throws IOException {
+            Request request = chain.request();
+            String url = request.url().url().toString();
+            boolean cacheUrl = cacheGetUrl(url);
+            if (cacheUrl) {
+                if (!isNetConnected(mContext)) {
+                    request = request.newBuilder()
+                            .cacheControl(CacheControl.FORCE_CACHE)
+                            .build();
+                }
+            }
+            return chain.proceed(request);
+        }
+    }
+
+    public class NetCacheInterceptor implements Interceptor {
+        @Override
+        public Response intercept(@NonNull Chain chain) throws IOException {
+            Request request = chain.request();
+            String url = request.url().url().toString();
+            boolean cacheUrl = cacheGetUrl(url);
+            Response response = chain.proceed(request);
+            if (cacheUrl) {
+                CacheControl cacheControl = new CacheControl.Builder()
+                        .maxAge(cacheMaxAge, TimeUnit.SECONDS)
+                        .build();
+                response = response.newBuilder()
+                        .removeHeader("Pragma")
+                        .header("Cache-Control", cacheControl.toString())
+                        .build();
+            }
+            return response;
+        }
+    }
+
+    public boolean cacheGetUrl(String url) {
+        if (cacheGetUrls != null) {
+            url = url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+            for (String s : cacheGetUrls) {
+                String cacheUrl = s.endsWith("/") ? s.substring(0, s.length() - 1) : s;
+                if (url.contains(cacheUrl)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    public void setCacheMaxAge(int cacheMaxAge) {
+        this.cacheMaxAge = cacheMaxAge;
+    }
+
+    public void setCacheGetUrls(String[] cacheGetUrls) {
+        this.cacheGetUrls = cacheGetUrls;
+        init();
+    }
+
+    public void setCacheMaxSize(int cacheMaxSize) {
+        this.cacheMaxSize = cacheMaxSize;
+        init();
+    }
+
+    public boolean clearCache() {
+        if (cacheDirectoryFile != null) {
+            File[] files = cacheDirectoryFile.listFiles();
+            for (File file : files) {
+                file.delete();
+            }
+            return true;
+        }
+        return true;
+    }
+
+    public static OkHttpClient.Builder getNormalBuilder() {
+        return new OkHttpClient.Builder()
+                .connectTimeout(DEFAULT_TIMEOUT_TIME, TimeUnit.SECONDS)
+                .readTimeout(DEFAULT_TIMEOUT_TIME, TimeUnit.SECONDS)
+                .writeTimeout(DEFAULT_TIMEOUT_TIME, TimeUnit.SECONDS);
+    }
+
+    public static NetworkInfo getActiveNetworkInfo(Context context) {
+        ConnectivityManager connectivityManager = (ConnectivityManager) context
+                .getSystemService(Context.CONNECTIVITY_SERVICE);
+        return connectivityManager.getActiveNetworkInfo();
+    }
+
+    public static boolean isNetConnected(Context context) {
+        NetworkInfo networkInfo = getActiveNetworkInfo(context);
+        return networkInfo != null && networkInfo.isConnected();
     }
 
 }
