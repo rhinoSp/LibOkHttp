@@ -74,7 +74,7 @@ public class MainActivity extends AppCompatActivity {
                 .addFormBody("dataToken[2]", "123")
                 .addHeader("dataToken", "V9f0hTv3cBqfltwqT2P0GFSIuV1A7aQ6dvNktrCjHGk=");
 
-        httpUtils.doPost(HttpUrl.URL_GET_TOKEN, param, new CallBack() {
+        httpUtils.doPost("https://www.baidu.com", param, new CallBack() {
             @Override
             public void onResponse(Call call, Response response) throws IOException {
                 super.onResponse(call, response);

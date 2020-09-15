@@ -20,16 +20,26 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
+import java.security.KeyStore;
+import java.security.SecureRandom;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSession;
+import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
+import javax.net.ssl.X509TrustManager;
 
 import okhttp3.Cache;
 import okhttp3.CacheControl;
 import okhttp3.Call;
+import okhttp3.ConnectionPool;
 import okhttp3.FormBody;
 import okhttp3.Interceptor;
 import okhttp3.MediaType;
@@ -103,9 +113,24 @@ public class OkHttpUtils {
     }
 
     protected OkHttpClient.Builder buildBuilder() {
-        return getNormalBuilder()
-                .sslSocketFactory(SSLUtils.createSSLSocketFactory())
-                .hostnameVerifier(new SSLUtils.TrustAllHostnameVerifier());
+        try {
+            TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            trustManagerFactory.init((KeyStore) null);
+            TrustManager[] trustManagers = trustManagerFactory.getTrustManagers();
+            if (trustManagers.length != 1 || !(trustManagers[0] instanceof X509TrustManager)) {
+                throw new IllegalStateException("Unexpected default trust managers:" + Arrays.toString(trustManagers));
+            }
+            X509TrustManager trustManager = (X509TrustManager) trustManagers[0];
+            SSLContext sslContext = SSLContext.getInstance("SSL");
+            sslContext.init(null, new TrustManager[]{trustManager}, null);
+            SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
+            return getNormalBuilder()
+                    .sslSocketFactory(sslSocketFactory, trustManager)
+                    .hostnameVerifier(new SSLUtils.TrustAllHostnameVerifier());
+        } catch (Exception e) {
+            LogUtils.e(TAG, e);
+        }
+        return getNormalBuilder();
     }
 
     public OkHttpClient getOkHttpClient() {
