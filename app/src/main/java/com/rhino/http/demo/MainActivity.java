@@ -11,8 +11,6 @@ import com.rhino.http.CallBack;
 import com.rhino.http.OkHttpUtils;
 import com.rhino.http.param.FileParams;
 import com.rhino.http.param.HttpParams;
-import com.rhino.http.demo.http.HttpUrl;
-import com.rhino.http.demo.http.request.ReqCheckToken;
 import com.rhino.http.demo.http.respose.ResCheckToken;
 import com.rhino.http.demo.http.respose.BaseResponse;
 import com.rhino.log.LogUtils;
