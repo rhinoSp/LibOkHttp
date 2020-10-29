@@ -14,6 +14,9 @@ public class JsonParams extends HttpParams {
     public JSONObject jsonObject = new JSONObject();
     private JsonConvert jsonConvert;
 
+    public JsonParams() {
+    }
+
     public static JsonParams create(String json) {
         JsonParams params = new JsonParams();
         try {

@@ -17,6 +17,9 @@ public class FileParams extends HttpParams {
     public String mediaType = "multipart/form-data";
     public Map<String, List<File>> fileMap = new HashMap<>(2);
 
+    public FileParams() {
+    }
+
     @Override
     public FileParams addHeader(String key, String value) {
         headerMap.put(key, value);

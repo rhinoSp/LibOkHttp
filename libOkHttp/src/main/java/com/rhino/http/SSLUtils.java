@@ -19,6 +19,9 @@ public class SSLUtils {
 
     private static final String TAG = SSLUtils.class.getSimpleName();
 
+    private SSLUtils() {
+    }
+
     @SuppressLint("TrulyRandom")
     public static SSLSocketFactory createSSLSocketFactory() {
         SSLSocketFactory sSLSocketFactory = null;

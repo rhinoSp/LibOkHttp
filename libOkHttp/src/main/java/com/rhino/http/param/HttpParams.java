@@ -14,6 +14,9 @@ public class HttpParams {
     public Map<String, String> headerMap = new HashMap<>(2);
     public CacheControl cacheControl;
 
+    public HttpParams() {
+    }
+
     public static FormParams form() {
         return new FormParams();
     }

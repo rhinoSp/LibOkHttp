@@ -12,6 +12,9 @@ public class FormParams extends HttpParams {
 
     public Map<String, String> formBodyMap = new HashMap<>(2);
 
+    public FormParams() {
+    }
+
     @Override
     public FormParams addHeader(String key, String value) {
         headerMap.put(key, value);
