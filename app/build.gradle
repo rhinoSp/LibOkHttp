@@ -46,15 +46,12 @@ android {
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
-    testImplementation 'junit:junit:4.12'
-    androidTestImplementation 'com.android.support.test:runner:1.0.2'
-    androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.2'
-
     implementation rootProject.ext.dependencies["appcompat-v7"]
     implementation rootProject.ext.dependencies["lib_okhttp"]
     implementation rootProject.ext.dependencies["gson"]
 
-    api project(path: ':libOkHttp')
-    implementation(name: 'com.rhino.log-libLog-v1.4.1', ext: 'aar')
+    implementation 'com.github.rhinoSp:LibLog:v1.4.5'
 //    implementation(name: 'com.rhino.http-libOkHttp-v1.8.2', ext: 'aar')
+
+    api project(path: ':libOkHttp')
 }

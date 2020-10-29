@@ -69,7 +69,7 @@ import okio.Sink;
  */
 public class OkHttpUtils {
 
-    protected static final String TAG = OkHttpUtils.class.getSimpleName();
+    public static final String TAG = OkHttpUtils.class.getSimpleName();
     protected static final MediaType MEDIA_TYPE = MediaType.parse("application/json; charset=utf-8");
     protected static final int DEFAULT_TIMEOUT_TIME = 60;
 
@@ -175,7 +175,7 @@ public class OkHttpUtils {
             LogUtils.i(TAG, "url = " + url);
             if (param instanceof JsonParams) {
                 Request.Builder requestBuilder = buildRequestBuilder(param).url(url).tag(tag);
-                String bodyJson = ((JsonParams) param).bodyJson;
+                String bodyJson = ((JsonParams) param).buildBodyJson();
                 LogUtils.i(TAG, "BODY: " + bodyJson);
                 RequestBody requestBody = RequestBody.create(MEDIA_TYPE, bodyJson);
                 Request request = requestBuilder.post(requestBody).build();
@@ -198,7 +198,7 @@ public class OkHttpUtils {
         okhttp3.Request.Builder requestBuilder = this.buildRequestBuilder(param).url(url);
         Request request;
         if (param instanceof JsonParams) {
-            String bodyJson = ((JsonParams) param).bodyJson;
+            String bodyJson = ((JsonParams) param).buildBodyJson();
             LogUtils.i(TAG, "BODY: " + bodyJson);
             RequestBody requestBody = RequestBody.create(MEDIA_TYPE, bodyJson);
             request = requestBuilder.post(requestBody).build();
@@ -225,7 +225,7 @@ public class OkHttpUtils {
         okhttp3.Request.Builder requestBuilder = buildRequestBuilder(param).url(url).tag(tag);
         Request request;
         if (param instanceof JsonParams) {
-            String bodyJson = ((JsonParams) param).bodyJson;
+            String bodyJson = ((JsonParams) param).buildBodyJson();
             LogUtils.i(TAG, "BODY: " + bodyJson);
             RequestBody requestBody = RequestBody.create(MEDIA_TYPE, bodyJson);
             request = requestBuilder.put(requestBody).build();
@@ -244,7 +244,7 @@ public class OkHttpUtils {
         okhttp3.Request.Builder requestBuilder = buildRequestBuilder(param).url(url).tag(tag);
         Request request;
         if (param instanceof JsonParams) {
-            String bodyJson = ((JsonParams) param).bodyJson;
+            String bodyJson = ((JsonParams) param).buildBodyJson();
             LogUtils.i(TAG, "BODY: " + bodyJson);
             RequestBody requestBody = RequestBody.create(MEDIA_TYPE, bodyJson);
             request = requestBuilder.put(requestBody).build();
@@ -271,7 +271,7 @@ public class OkHttpUtils {
         okhttp3.Request.Builder requestBuilder = buildRequestBuilder(param).url(url).tag(tag);
         Request request;
         if (param instanceof JsonParams) {
-            String bodyJson = ((JsonParams) param).bodyJson;
+            String bodyJson = ((JsonParams) param).buildBodyJson();
             LogUtils.i(TAG, "BODY: " + bodyJson);
             RequestBody requestBody = RequestBody.create(MEDIA_TYPE, bodyJson);
             request = requestBuilder.delete(requestBody).build();
@@ -290,7 +290,7 @@ public class OkHttpUtils {
         okhttp3.Request.Builder requestBuilder = buildRequestBuilder(param).url(url).tag(tag);
         Request request;
         if (param instanceof JsonParams) {
-            String bodyJson = ((JsonParams) param).bodyJson;
+            String bodyJson = ((JsonParams) param).buildBodyJson();
             LogUtils.i(TAG, "BODY: " + bodyJson);
             RequestBody requestBody = RequestBody.create(MEDIA_TYPE, bodyJson);
             request = requestBuilder.delete(requestBody).build();

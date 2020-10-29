@@ -1,5 +1,7 @@
 package com.rhino.http.param;
 
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.util.Map;
 
@@ -9,8 +11,18 @@ import java.util.Map;
  **/
 public class JsonParams extends HttpParams {
 
-    public String bodyJson = "";
+    public JSONObject jsonObject = new JSONObject();
+    private JsonConvert jsonConvert;
 
+    public static JsonParams create(String json) {
+        JsonParams params = new JsonParams();
+        try {
+            params.jsonObject = new JSONObject(json);
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+        return params;
+    }
 
     @Override
     public JsonParams addHeader(String key, String value) {
@@ -24,9 +36,33 @@ public class JsonParams extends HttpParams {
         return this;
     }
 
-    public JsonParams setBodyJson(String json) {
-        bodyJson = json;
+    public JsonParams setJsonConvert(JsonConvert jsonConvert) {
+        this.jsonConvert = jsonConvert;
         return this;
+    }
+
+    public JsonParams addProperty(String key, Object value) {
+        try {
+            jsonObject.put(key, value);
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+        return this;
+    }
+
+    public String toJson() {
+        return jsonObject.toString();
+    }
+
+    public String buildBodyJson() {
+        if (jsonConvert != null) {
+            return jsonConvert.format(this);
+        }
+        return jsonObject.toString();
+    }
+
+    public interface JsonConvert {
+        String format(JsonParams params);
     }
 
 }
