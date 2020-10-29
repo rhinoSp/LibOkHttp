@@ -17,6 +17,9 @@ import okhttp3.Response;
  **/
 public class CallBack implements okhttp3.Callback {
 
+    public CallBack() {
+    }
+
     public void onStart(String url, Object tag, HttpParams param) {
         LogUtils.i(OkHttpUtils.TAG, "onStart");
     }
