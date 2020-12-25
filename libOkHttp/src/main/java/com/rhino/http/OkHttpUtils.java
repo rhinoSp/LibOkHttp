@@ -133,6 +133,14 @@ public class OkHttpUtils {
         return getNormalBuilder();
     }
 
+    public void rebuild() {
+        okHttpClient = builder.build();
+    }
+
+    public OkHttpClient.Builder getBuilder() {
+        return builder;
+    }
+
     public OkHttpClient getOkHttpClient() {
         return okHttpClient;
     }
