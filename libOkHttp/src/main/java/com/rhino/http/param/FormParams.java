@@ -12,7 +12,11 @@ public class FormParams extends HttpParams {
 
     public Map<String, String> formBodyMap = new HashMap<>(2);
 
-    public FormParams() {
+    private FormParams() {
+    }
+
+    public static FormParams create() {
+        return new FormParams();
     }
 
     @Override

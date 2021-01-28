@@ -21,16 +21,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.security.KeyStore;
-import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-import javax.net.ssl.HostnameVerifier;
-import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLSession;
 import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
@@ -39,7 +35,6 @@ import javax.net.ssl.X509TrustManager;
 import okhttp3.Cache;
 import okhttp3.CacheControl;
 import okhttp3.Call;
-import okhttp3.ConnectionPool;
 import okhttp3.FormBody;
 import okhttp3.Interceptor;
 import okhttp3.MediaType;
@@ -763,7 +758,7 @@ public class OkHttpUtils {
                 if (read >= 0) {
                     this.readBytes++;
                     float percent = 1F * readBytes / totalBytes;
-                    LogUtils.i(TAG, "Download file readBytes = " + readBytes + ", totalBytes = " + totalBytes + ", percent = " + percent);
+                    //LogUtils.i(TAG, "Download file readBytes = " + readBytes + ", totalBytes = " + totalBytes + ", percent = " + percent);
                     this.callBack.onFileRequestProgressChanged(readBytes, totalBytes, percent);
                 }
                 return read;
@@ -780,7 +775,7 @@ public class OkHttpUtils {
                 if (read >= 0) {
                     this.readBytes += read;
                     float percent = 1F * readBytes / totalBytes;
-                    LogUtils.i(TAG, "Download file readBytes = " + readBytes + ", totalBytes = " + totalBytes + ", percent = " + percent);
+                    //LogUtils.i(TAG, "Download file readBytes = " + readBytes + ", totalBytes = " + totalBytes + ", percent = " + percent);
                     this.callBack.onFileRequestProgressChanged(readBytes, totalBytes, percent);
                 }
                 return read;

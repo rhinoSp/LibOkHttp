@@ -13,11 +13,15 @@ import java.util.Map;
 public class FileParams extends HttpParams {
 
     public Map<String, String> formBodyMap = new HashMap<>(2);
-    
+
     public String mediaType = "multipart/form-data";
     public Map<String, List<File>> fileMap = new HashMap<>(2);
 
-    public FileParams() {
+    private FileParams() {
+    }
+
+    public static FileParams create() {
+        return new FileParams();
     }
 
     @Override

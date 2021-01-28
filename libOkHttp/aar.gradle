@@ -10,7 +10,7 @@ ext.aarOutPutDir = "${rootDir}/repositories"
 ext.aarPackageName = "com.rhino.http"
 ext.aarArtifactId = "libOkHttp"
 ext.aarVersionName = "1.9"
-ext.aarVersionCode = 2
+ext.aarVersionCode = 3
 
 afterEvaluate {
     project.tasks.findAll {

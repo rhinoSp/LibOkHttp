@@ -18,15 +18,19 @@ public class HttpParams {
     }
 
     public static FormParams form() {
-        return new FormParams();
+        return FormParams.create();
     }
 
     public static JsonParams json() {
-        return new JsonParams();
+        return JsonParams.create();
+    }
+
+    public static JsonParams json(String json) {
+        return JsonParams.create(json);
     }
 
     public static FileParams file() {
-        return new FileParams();
+        return FileParams.create();
     }
 
     public HttpParams setCacheControl(CacheControl cacheControl) {

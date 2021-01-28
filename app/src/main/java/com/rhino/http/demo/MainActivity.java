@@ -144,10 +144,30 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void downloadFile() {
-        String url = "http://49.234.139.59:9000/tpm/app/TPM-v1.0.2-2020-08-13.apk";
-        String filePath = "/sdcard/update.apk";
-        httpUtils.downloadFile(url, filePath, new CallBack(){
+//        String url = "http://49.234.139.59:9000/tpm/app/TPM-v1.0.2-2020-08-13.apk";
+//        String filePath = "/sdcard/update.apk";
+//        httpUtils.downloadFile(url, filePath, new CallBack(){
+//
+//        });
 
+//        String url = "https://ss3.bdstatic.com/70cFv8Sh_Q1YnxGkpoWK1HF6hhy/it/u=3153405721,1524067674&fm=26&gp=0.jpg";
+//        String filePath = "/sdcard/1/tmp.jpg";
+//        httpUtils.download(url, filePath);
+
+        String url = "https://ss3.bdstatic.com/70cFv8Sh_Q1YnxGkpoWK1HF6hhy/it/u=3153405721,1524067674&fm=26&gp=0.jpg";
+        String filePath = "/sdcard/1/tmp.jpg";
+        httpUtils.downloadFile(url, filePath, new CallBack(){
+            @Override
+            public void onFailure(Call call, IOException e) {
+                super.onFailure(call, e);
+                LogUtils.e(e);
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                super.onResponse(call, response);
+                LogUtils.d("onResponse");
+            }
         });
     }
 }

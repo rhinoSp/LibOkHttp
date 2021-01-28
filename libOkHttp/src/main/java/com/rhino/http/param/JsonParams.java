@@ -14,7 +14,11 @@ public class JsonParams extends HttpParams {
     public JSONObject jsonObject = new JSONObject();
     private JsonConvert jsonConvert;
 
-    public JsonParams() {
+    private JsonParams() {
+    }
+
+    public static JsonParams create() {
+        return new JsonParams();
     }
 
     public static JsonParams create(String json) {
