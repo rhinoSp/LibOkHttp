@@ -3,6 +3,7 @@ package com.rhino.http;
 import android.content.Context;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
+import android.os.Build;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.text.TextUtils;
@@ -65,17 +66,17 @@ import okio.Sink;
 public class OkHttpUtils {
 
     public static final String TAG = OkHttpUtils.class.getSimpleName();
-    protected static final MediaType MEDIA_TYPE = MediaType.parse("application/json; charset=utf-8");
-    protected static final int DEFAULT_TIMEOUT_TIME = 60;
+    public static final MediaType MEDIA_TYPE = MediaType.parse("application/json; charset=utf-8");
+    public static final int DEFAULT_TIMEOUT_TIME = 60;
 
-    protected Context mContext;
-    protected OkHttpClient.Builder builder;
-    protected OkHttpClient okHttpClient;
+    public Context mContext;
+    public OkHttpClient.Builder builder;
+    public OkHttpClient okHttpClient;
 
-    protected File cacheDirectoryFile;
-    protected int cacheMaxAge = 60 * 60; // 1h
-    protected int cacheMaxSize = 1024 * 1024 * 10; // 10MB
-    protected String[] cacheGetUrls;
+    public File cacheDirectoryFile;
+    public int cacheMaxAge = 60 * 60; // 1h
+    public int cacheMaxSize = 1024 * 1024 * 10; // 10MB
+    public String[] cacheGetUrls;
 
     public OkHttpUtils(@NonNull Context context) {
         this(context, null, null);
@@ -119,6 +120,9 @@ public class OkHttpUtils {
             SSLContext sslContext = SSLContext.getInstance("SSL");
             sslContext.init(null, new TrustManager[]{trustManager}, null);
             SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.KITKAT) {
+                return getNormalBuilder();
+            }
             return getNormalBuilder()
                     .sslSocketFactory(sslSocketFactory, trustManager)
                     .hostnameVerifier(new SSLUtils.TrustAllHostnameVerifier());
