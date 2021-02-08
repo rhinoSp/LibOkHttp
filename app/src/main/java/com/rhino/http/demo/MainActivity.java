@@ -1,18 +1,20 @@
 package com.rhino.http.demo;
 
 import android.Manifest;
+import android.os.Bundle;
+import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
-import android.os.Bundle;
 import android.view.View;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.rhino.http.CallBack;
 import com.rhino.http.OkHttpUtils;
+import com.rhino.http.demo.http.respose.BaseResponse;
+import com.rhino.http.demo.http.respose.ResCheckToken;
 import com.rhino.http.param.FileParams;
 import com.rhino.http.param.HttpParams;
-import com.rhino.http.demo.http.respose.ResCheckToken;
-import com.rhino.http.demo.http.respose.BaseResponse;
 import com.rhino.log.LogUtils;
 
 import java.io.File;
@@ -52,8 +54,10 @@ public class MainActivity extends AppCompatActivity {
             get();
         } else if (id == R.id.bt_upload_file) {
             uploadFile();
-        }  else if (id == R.id.bt_download_file) {
+        } else if (id == R.id.bt_download_file) {
             downloadFile();
+        } else if (id == R.id.bt_cancel_request) {
+            cancelRequest();
         } else if (id == R.id.bt_clear_cache) {
             if (httpUtils.clearCache()) {
                 Toast.makeText(this, "删除成功！", Toast.LENGTH_SHORT).show();
@@ -143,30 +147,80 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    public long completeBytes;
+    public long totalBytes;
+
     private void downloadFile() {
 //        String url = "http://49.234.139.59:9000/tpm/app/TPM-v1.0.2-2020-08-13.apk";
 //        String filePath = "/sdcard/update.apk";
-//        httpUtils.downloadFile(url, filePath, new CallBack(){
-//
-//        });
 
 //        String url = "https://ss3.bdstatic.com/70cFv8Sh_Q1YnxGkpoWK1HF6hhy/it/u=3153405721,1524067674&fm=26&gp=0.jpg";
 //        String filePath = "/sdcard/1/tmp.jpg";
 //        httpUtils.download(url, filePath);
 
-        String url = "https://ss3.bdstatic.com/70cFv8Sh_Q1YnxGkpoWK1HF6hhy/it/u=3153405721,1524067674&fm=26&gp=0.jpg";
-        String filePath = "/sdcard/1/tmp.jpg";
-        httpUtils.downloadFile(url, filePath, new CallBack(){
+//        String url = "https://ss3.bdstatic.com/70cFv8Sh_Q1YnxGkpoWK1HF6hhy/it/u=3153405721,1524067674&fm=26&gp=0.jpg";
+//        String filePath = "/sdcard/1/tmp.jpg";
+
+//        String url = "http://v.ysbang.cn//data/video/2015/rkb/2015rkb01.mp4";
+//        String filePath = "/sdcard/1/tmp.mp4";
+
+        // completeBytes = 379747, totalBytes = 78524858
+//        String url = "http://117.51.159.28:8100/group1/default/20210124/22/18/1/969f56e7b79e9eabd6c79a0c4834aa2d.MP4?download=0&auth_token=8505A098C0BB43E9B2D5C198A2FCCFB7";
+//        String filePath = "/sdcard/1/tmp.MP4";
+
+        // completeBytes = 282793, totalBytes = 16351946
+        String token = "F678982063104D1683D8E6F6B2019689";
+        String filePath = "/group1/default/20210124/22/18/1/efa8d6ad0cb3500d633ce4aae7d91cd1.mov";
+        String url = "http://117.51.159.28:8100" + filePath + "?download=0&auth_token=" + token;
+        String saveFilePath = "/sdcard/1/efa8d6ad0cb3500d633ce4aae7d91cd1.mov";
+        FileParams fileParams = FileParams.file()
+                .setBreakpointResume(completeBytes, totalBytes);
+
+        httpUtils.downloadFile(url, fileParams, saveFilePath, new CallBack() {
             @Override
-            public void onFailure(Call call, IOException e) {
-                super.onFailure(call, e);
-                LogUtils.e(e);
+            public void onStart(String url, Object tag, HttpParams param) {
+                super.onStart(url, tag, param);
+                showResult("开始下载", "");
             }
 
             @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                super.onResponse(call, response);
-                LogUtils.d("onResponse");
+            public void onFileFailure(String error) {
+                super.onFileFailure(error);
+                showResult(null, "下载失败，" + error);
+            }
+
+            @Override
+            public void onFileRequestProgressChanged(long completeBytes, long totalBytes, float percent) {
+                super.onFileRequestProgressChanged(completeBytes, totalBytes, percent);
+                MainActivity.this.completeBytes = completeBytes;
+                MainActivity.this.totalBytes = totalBytes;
+                showResult("文件下载中..." + (int) (100 * percent) + "%", "");
+            }
+
+            @Override
+            public void onFileRequestFinish(@Nullable File file) {
+                super.onFileRequestFinish(file);
+                completeBytes = 0;
+                totalBytes = 0;
+                showResult("下载完成", "");
+            }
+        });
+    }
+
+    private void cancelRequest() {
+        httpUtils.cancelRequest();
+    }
+
+    private void showResult(String msg1, String msg2) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (msg1 != null) {
+                    ((TextView) findViewById(R.id.tv_tips1)).setText(msg1);
+                }
+                if (msg2 != null) {
+                    ((TextView) findViewById(R.id.tv_tips2)).setText(msg2);
+                }
             }
         });
     }

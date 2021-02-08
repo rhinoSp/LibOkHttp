@@ -18,6 +18,8 @@ import com.rhino.log.LogUtils;
 
 import java.io.Closeable;
 import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
@@ -391,15 +393,20 @@ public class OkHttpUtils {
         downloadFile(url, null, saveFilePath, callBack);
     }
 
-    public void downloadFile(final String url, HttpParams param, final String saveFilePath, final CallBack callBack) {
+    public void downloadFile(final String url, FileParams param, final String saveFilePath, final CallBack callBack) {
         downloadFile(url, url, param, saveFilePath, callBack);
     }
 
-    public void downloadFile(final String url, Object tag, HttpParams param, final String saveFilePath, final CallBack callBack) {
+    public void downloadFile(final String url, Object tag, FileParams param, final String saveFilePath, final CallBack callBack) {
         LogUtils.i(TAG, "-------------------------------------------------");
         LogUtils.i(TAG, "url = " + url);
         LogUtils.i(TAG, "saveFilePath = " + saveFilePath);
         Request.Builder requestBuilder = buildRequestBuilder(param).url(url).tag(tag);
+        if (param.completeBytes > 0 && param.totalBytes > param.completeBytes) {
+            String range = "bytes=" + param.completeBytes + "-" + param.totalBytes;
+            requestBuilder.addHeader("RANGE", range);
+            LogUtils.i(TAG, "RANGE = " + range);
+        }
         FormBody.Builder bodyBuilder = buildFormBodyBuilder(param);
         FormBody formBody = bodyBuilder.build();
         Request request = requestBuilder.build();
@@ -417,31 +424,27 @@ public class OkHttpUtils {
 
             @Override
             public void onResponse(Call call, Response response) {
-                FileProgressResponseBody responseBody = new FileProgressResponseBody(response.body(), callBack);
-                BufferedSource source = responseBody.source();
+                BufferedSource source = null;
+                BufferedSink sink = null;
                 try {
                     callBack.onResponse(call, response);
-                    File saveFile = new File(saveFilePath);
-                    if (!saveFile.delete()) {
-                        LogUtils.e(TAG, "delete file failed.");
-                    }
-                    if (!saveFile.getParentFile().exists() && !saveFile.getParentFile().mkdirs()) {
-                        LogUtils.e(TAG, "makdir failed.");
-                    }
-                    if (!saveFile.createNewFile()) {
-                        LogUtils.e(TAG, "create file failed.");
-                    }
-                    BufferedSink sink = Okio.buffer(Okio.sink(saveFile));
+
+                    FileProgressResponseBody responseBody = new FileProgressResponseBody(response.body(), param, saveFilePath, callBack);
+                    source = responseBody.source();
+                    sink = responseBody.sink();
+
                     source.readAll(sink);
                     sink.flush();
                     source.close();
+                    sink.close();
                     LogUtils.i(TAG, "Download file finish");
-                    callBack.onFileRequestFinish(saveFile);
+                    callBack.onFileRequestFinish(new File(saveFilePath));
                 } catch (Exception e) {
                     LogUtils.e(TAG, e.toString());
                     callBack.onFileFailure(e.getMessage());
                 } finally {
                     closeQuietly(source);
+                    closeQuietly(sink);
                 }
             }
         });
@@ -706,11 +709,16 @@ public class OkHttpUtils {
 
     public class FileProgressResponseBody extends ResponseBody {
         private final ResponseBody responseBody;
+        private final FileParams fileParams;
+        private final String saveFilePath;
         private BufferedSource progressSource;
+        private BufferedSink bufferedSink;
         private CallBack callBack;
 
-        FileProgressResponseBody(ResponseBody responseBody, CallBack callBack) {
+        FileProgressResponseBody(ResponseBody responseBody, FileParams fileParams, String saveFilePath, CallBack callBack) {
             this.responseBody = responseBody;
+            this.fileParams = fileParams;
+            this.saveFilePath = saveFilePath;
             this.callBack = callBack;
         }
 
@@ -729,7 +737,9 @@ public class OkHttpUtils {
             if (callBack == null) {
                 return responseBody.source();
             }
-            ProgressInputStream progressInputStream = new ProgressInputStream(responseBody.source().inputStream(), callBack, contentLength());
+            ProgressInputStream progressInputStream = new ProgressInputStream(responseBody.source().inputStream());
+            progressInputStream.setCompleteBytes(completeBytes());
+            progressInputStream.setTotalBytes(totalBytes());
             progressSource = Okio.buffer(Okio.source(progressInputStream));
             return progressSource;
         }
@@ -737,33 +747,108 @@ public class OkHttpUtils {
         @Override
         public void close() {
             closeQuietly(progressSource);
+            closeQuietly(bufferedSink);
+        }
+
+        private long completeBytes() {
+            return fileParams.completeBytes > 0 ? fileParams.completeBytes : 0;
+        }
+
+        private long totalBytes() {
+            return fileParams.totalBytes > 0 ? fileParams.totalBytes : contentLength();
+        }
+
+        public BufferedSink sink() throws Exception {
+            File saveFile = new File(saveFilePath);
+            ProgressOutputStream progressOutputStream;
+            if (fileParams.completeBytes > 0 && fileParams.totalBytes > fileParams.completeBytes) {
+                progressOutputStream = new ProgressOutputStream(saveFile, true);
+            } else {
+                if (saveFile.exists() && !saveFile.delete()) {
+                    LogUtils.e(TAG, "delete file failed.");
+                }
+                progressOutputStream = new ProgressOutputStream(saveFile);
+            }
+            if (!saveFile.getParentFile().exists() && !saveFile.getParentFile().mkdirs()) {
+                LogUtils.e(TAG, "makdir failed.");
+            }
+            if (!saveFile.exists() && !saveFile.createNewFile()) {
+                LogUtils.e(TAG, "create file failed.");
+            }
+            progressOutputStream.setCompleteBytes(completeBytes());
+            progressOutputStream.setTotalBytes(totalBytes());
+            bufferedSink = Okio.buffer(Okio.sink(progressOutputStream));
+            return bufferedSink;
+        }
+
+        protected final class ProgressOutputStream extends FileOutputStream {
+
+            private long completeBytes;
+            private long totalBytes;
+            private long writeBytes = 0;
+
+            public ProgressOutputStream(File file) throws FileNotFoundException {
+                super(file);
+            }
+
+            public ProgressOutputStream(File file, boolean append) throws FileNotFoundException {
+                super(file, append);
+            }
+
+            @Override
+            public void write(byte[] b, int off, int len) throws IOException {
+                super.write(b, off, len);
+                if (totalBytes < 0) {
+                    LogUtils.e(TAG, "File total size is " + totalBytes);
+                    callBack.onFileRequestProgressChanged(-1, -1, -1);
+                    return;
+                }
+                if (len >= 0) {
+                    writeBytes += len;
+                    float percent = 1F * (completeBytes + writeBytes) / totalBytes;
+                    callBack.onFileRequestProgressChanged(completeBytes + writeBytes, totalBytes, percent);
+                }
+            }
+
+            public long getCompleteBytes() {
+                return completeBytes;
+            }
+
+            public void setCompleteBytes(long completeBytes) {
+                this.completeBytes = completeBytes;
+            }
+
+            public long getTotalBytes() {
+                return totalBytes;
+            }
+
+            public void setTotalBytes(long totalBytes) {
+                this.totalBytes = totalBytes;
+            }
         }
 
         protected final class ProgressInputStream extends InputStream {
             private final InputStream stream;
-            private final CallBack callBack;
+            private long completeBytes;
             private long totalBytes;
             private long readBytes = 0;
 
-            ProgressInputStream(InputStream stream, CallBack callBack, long totalBytes) {
+            ProgressInputStream(InputStream stream) {
                 this.stream = stream;
-                this.callBack = callBack;
-                this.totalBytes = totalBytes;
             }
 
             @Override
             public int read() throws IOException {
                 int read = this.stream.read();
-                if (this.totalBytes < 0) {
+                if (totalBytes < 0) {
                     LogUtils.e(TAG, "File total size is " + totalBytes);
-                    this.callBack.onFileRequestProgressChanged(-1, -1, -1);
+                    callBack.onFileRequestProgressChanged(-1, -1, -1);
                     return read;
                 }
                 if (read >= 0) {
-                    this.readBytes++;
-                    float percent = 1F * readBytes / totalBytes;
-                    //LogUtils.i(TAG, "Download file readBytes = " + readBytes + ", totalBytes = " + totalBytes + ", percent = " + percent);
-                    this.callBack.onFileRequestProgressChanged(readBytes, totalBytes, percent);
+                    float percent = 1F * (completeBytes + readBytes) / totalBytes;
+                    //this.callBack.onFileRequestProgressChanged(completeBytes + readBytes, totalBytes, percent);
+                    readBytes++;
                 }
                 return read;
             }
@@ -771,16 +856,15 @@ public class OkHttpUtils {
             @Override
             public int read(byte[] b, int off, int len) throws IOException {
                 int read = this.stream.read(b, off, len);
-                if (this.totalBytes < 0) {
+                if (totalBytes < 0) {
                     LogUtils.e(TAG, "File total size is " + totalBytes);
-                    this.callBack.onFileRequestProgressChanged(-1, -1, -1);
+                    callBack.onFileRequestProgressChanged(-1, -1, -1);
                     return read;
                 }
                 if (read >= 0) {
-                    this.readBytes += read;
-                    float percent = 1F * readBytes / totalBytes;
-                    //LogUtils.i(TAG, "Download file readBytes = " + readBytes + ", totalBytes = " + totalBytes + ", percent = " + percent);
-                    this.callBack.onFileRequestProgressChanged(readBytes, totalBytes, percent);
+                    float percent = 1F * (completeBytes + readBytes) / totalBytes;
+                    //this.callBack.onFileRequestProgressChanged(completeBytes + readBytes, totalBytes, percent);
+                    readBytes += read;
                 }
                 return read;
             }
@@ -788,6 +872,22 @@ public class OkHttpUtils {
             @Override
             public void close() {
                 closeQuietly(stream);
+            }
+
+            public long getCompleteBytes() {
+                return completeBytes;
+            }
+
+            public void setCompleteBytes(long completeBytes) {
+                this.completeBytes = completeBytes;
+            }
+
+            public long getTotalBytes() {
+                return totalBytes;
+            }
+
+            public void setTotalBytes(long totalBytes) {
+                this.totalBytes = totalBytes;
             }
         }
     }

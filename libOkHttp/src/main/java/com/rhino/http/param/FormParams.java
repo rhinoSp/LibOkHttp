@@ -10,6 +10,9 @@ import java.util.Map;
  **/
 public class FormParams extends HttpParams {
 
+    /**
+     * 请求参数
+     */
     public Map<String, String> formBodyMap = new HashMap<>(2);
 
     private FormParams() {

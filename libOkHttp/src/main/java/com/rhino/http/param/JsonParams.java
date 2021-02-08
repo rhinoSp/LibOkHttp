@@ -11,7 +11,13 @@ import java.util.Map;
  **/
 public class JsonParams extends HttpParams {
 
+    /**
+     * JSONObject
+     */
     public JSONObject jsonObject = new JSONObject();
+    /**
+     * json转换器，可以在请求前对json进行加密等操作
+     */
     private JsonConvert jsonConvert;
 
     private JsonParams() {

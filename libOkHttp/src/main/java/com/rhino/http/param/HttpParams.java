@@ -11,7 +11,13 @@ import okhttp3.CacheControl;
  */
 public class HttpParams {
 
+    /**
+     * 请求头参数
+     */
     public Map<String, String> headerMap = new HashMap<>(2);
+    /**
+     * 缓存控制
+     */
     public CacheControl cacheControl;
 
     public HttpParams() {

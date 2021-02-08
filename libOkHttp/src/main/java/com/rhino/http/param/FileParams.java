@@ -12,10 +12,26 @@ import java.util.Map;
  **/
 public class FileParams extends HttpParams {
 
+    /**
+     * 请求参数
+     */
     public Map<String, String> formBodyMap = new HashMap<>(2);
-
+    /**
+     * mediaType
+     */
     public String mediaType = "multipart/form-data";
+    /**
+     * 上传文件集合
+     */
     public Map<String, List<File>> fileMap = new HashMap<>(2);
+    /**
+     * 断点续传有效，已完成的长度
+     */
+    public long completeBytes;
+    /**
+     * 断点续传有效，文件总大小
+     */
+    public long totalBytes;
 
     private FileParams() {
     }
@@ -61,6 +77,12 @@ public class FileParams extends HttpParams {
 
     public FileParams setFileMap(Map<String, List<File>> fileMap) {
         this.fileMap = fileMap;
+        return this;
+    }
+
+    public FileParams setBreakpointResume(long completeBytes, long totalBytes) {
+        this.completeBytes = completeBytes;
+        this.totalBytes = totalBytes;
         return this;
     }
 
