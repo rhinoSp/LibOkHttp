@@ -25,13 +25,9 @@ public class FileParams extends HttpParams {
      */
     public Map<String, List<File>> fileMap = new HashMap<>(2);
     /**
-     * 断点续传有效，已完成的长度
+     * 是否断点续传
      */
-    public long completeBytes;
-    /**
-     * 断点续传有效，文件总大小
-     */
-    public long totalBytes;
+    public boolean breakpointResumeAble = true;
 
     private FileParams() {
     }
@@ -80,10 +76,8 @@ public class FileParams extends HttpParams {
         return this;
     }
 
-    public FileParams setBreakpointResume(long completeBytes, long totalBytes) {
-        this.completeBytes = completeBytes;
-        this.totalBytes = totalBytes;
+    public FileParams setBreakpointResumeAble(boolean breakpointResumeAble) {
+        this.breakpointResumeAble = breakpointResumeAble;
         return this;
     }
-
 }

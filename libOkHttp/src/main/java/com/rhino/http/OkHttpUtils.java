@@ -18,6 +18,7 @@ import com.rhino.log.LogUtils;
 
 import java.io.Closeable;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -402,8 +403,15 @@ public class OkHttpUtils {
         LogUtils.i(TAG, "url = " + url);
         LogUtils.i(TAG, "saveFilePath = " + saveFilePath);
         Request.Builder requestBuilder = buildRequestBuilder(param).url(url).tag(tag);
-        if (param.completeBytes > 0 && param.totalBytes > param.completeBytes) {
-            String range = "bytes=" + param.completeBytes + "-" + param.totalBytes;
+        File saveFile = new File(saveFilePath);
+        int completeBytes = param.breakpointResumeAble ? getFileSize(saveFile) : 0;
+        if (!param.breakpointResumeAble && saveFile.exists()) {
+            // 不支持断点续传，文件存在就删除
+            saveFile.delete();
+        }
+        if (completeBytes > 0) {
+            // 是否断点续传
+            String range = "bytes=" + completeBytes + "-";
             requestBuilder.addHeader("RANGE", range);
             LogUtils.i(TAG, "RANGE = " + range);
         }
@@ -429,7 +437,7 @@ public class OkHttpUtils {
                 try {
                     callBack.onResponse(call, response);
 
-                    FileProgressResponseBody responseBody = new FileProgressResponseBody(response.body(), param, saveFilePath, callBack);
+                    FileProgressResponseBody responseBody = new FileProgressResponseBody(response.body(), param, saveFile, completeBytes, callBack);
                     source = responseBody.source();
                     sink = responseBody.sink();
 
@@ -438,7 +446,7 @@ public class OkHttpUtils {
                     source.close();
                     sink.close();
                     LogUtils.i(TAG, "Download file finish");
-                    callBack.onFileRequestFinish(new File(saveFilePath));
+                    callBack.onFileRequestFinish(saveFile);
                 } catch (Exception e) {
                     LogUtils.e(TAG, e.toString());
                     callBack.onFileFailure(e.getMessage());
@@ -710,15 +718,17 @@ public class OkHttpUtils {
     public class FileProgressResponseBody extends ResponseBody {
         private final ResponseBody responseBody;
         private final FileParams fileParams;
-        private final String saveFilePath;
+        private final File saveFile;
+        private final int completeBytes;
         private BufferedSource progressSource;
         private BufferedSink bufferedSink;
         private CallBack callBack;
 
-        FileProgressResponseBody(ResponseBody responseBody, FileParams fileParams, String saveFilePath, CallBack callBack) {
+        FileProgressResponseBody(ResponseBody responseBody, FileParams fileParams, File saveFile, int completeBytes, CallBack callBack) {
             this.responseBody = responseBody;
             this.fileParams = fileParams;
-            this.saveFilePath = saveFilePath;
+            this.completeBytes = completeBytes;
+            this.saveFile = saveFile;
             this.callBack = callBack;
         }
 
@@ -751,29 +761,28 @@ public class OkHttpUtils {
         }
 
         private long completeBytes() {
-            return fileParams.completeBytes > 0 ? fileParams.completeBytes : 0;
+            return saveFile.exists() && completeBytes > 0 ? completeBytes : 0;
         }
 
         private long totalBytes() {
-            return fileParams.totalBytes > 0 ? fileParams.totalBytes : contentLength();
+            return saveFile.exists() && completeBytes > 0 ? completeBytes + contentLength() : contentLength();
         }
 
         public BufferedSink sink() throws Exception {
-            File saveFile = new File(saveFilePath);
             ProgressOutputStream progressOutputStream;
-            if (fileParams.completeBytes > 0 && fileParams.totalBytes > fileParams.completeBytes) {
+            if (saveFile.exists() && completeBytes > 0) {
                 progressOutputStream = new ProgressOutputStream(saveFile, true);
             } else {
                 if (saveFile.exists() && !saveFile.delete()) {
                     LogUtils.e(TAG, "delete file failed.");
                 }
+                if (!saveFile.getParentFile().exists() && !saveFile.getParentFile().mkdirs()) {
+                    LogUtils.e(TAG, "makdir failed.");
+                }
+                if (!saveFile.exists() && !saveFile.createNewFile()) {
+                    LogUtils.e(TAG, "create file failed.");
+                }
                 progressOutputStream = new ProgressOutputStream(saveFile);
-            }
-            if (!saveFile.getParentFile().exists() && !saveFile.getParentFile().mkdirs()) {
-                LogUtils.e(TAG, "makdir failed.");
-            }
-            if (!saveFile.exists() && !saveFile.createNewFile()) {
-                LogUtils.e(TAG, "create file failed.");
             }
             progressOutputStream.setCompleteBytes(completeBytes());
             progressOutputStream.setTotalBytes(totalBytes());
@@ -983,6 +992,28 @@ public class OkHttpUtils {
     public static boolean isNetConnected(Context context) {
         NetworkInfo networkInfo = getActiveNetworkInfo(context);
         return networkInfo != null && networkInfo.isConnected();
+    }
+
+    public static int getFileSize(File file) {
+        if (file == null || !file.exists()) {
+            return 0;
+        }
+        FileInputStream fis = null;
+        try {
+            fis = new FileInputStream(file);
+            return fis.available();
+        } catch (Exception e) {
+            LogUtils.e(e);
+        } finally {
+            if (null != fis) {
+                try {
+                    fis.close();
+                } catch (IOException e) {
+                    LogUtils.e(e);
+                }
+            }
+        }
+        return 0;
     }
 
 }

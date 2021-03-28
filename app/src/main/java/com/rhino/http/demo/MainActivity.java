@@ -147,8 +147,6 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    public long completeBytes;
-    public long totalBytes;
 
     private void downloadFile() {
 //        String url = "http://49.234.139.59:9000/tpm/app/TPM-v1.0.2-2020-08-13.apk";
@@ -169,12 +167,10 @@ public class MainActivity extends AppCompatActivity {
 //        String filePath = "/sdcard/1/tmp.MP4";
 
         // completeBytes = 282793, totalBytes = 16351946
-        String token = "F678982063104D1683D8E6F6B2019689";
-        String filePath = "/group1/default/20210124/22/18/1/efa8d6ad0cb3500d633ce4aae7d91cd1.mov";
-        String url = "http://117.51.159.28:8100" + filePath + "?download=0&auth_token=" + token;
+        String token = "89D04DB76A50440C8DA6ADBC5623F846";
+        String url = "http://117.51.159.28:8100/group1/default/20210124/22/18/1/efa8d6ad0cb3500d633ce4aae7d91cd1.mov" + "?download=0&auth_token=" + token;
         String saveFilePath = "/sdcard/1/efa8d6ad0cb3500d633ce4aae7d91cd1.mov";
-        FileParams fileParams = FileParams.file()
-                .setBreakpointResume(completeBytes, totalBytes);
+        FileParams fileParams = FileParams.file();
 
         httpUtils.downloadFile(url, fileParams, saveFilePath, new CallBack() {
             @Override
@@ -192,16 +188,12 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onFileRequestProgressChanged(long completeBytes, long totalBytes, float percent) {
                 super.onFileRequestProgressChanged(completeBytes, totalBytes, percent);
-                MainActivity.this.completeBytes = completeBytes;
-                MainActivity.this.totalBytes = totalBytes;
                 showResult("文件下载中..." + (int) (100 * percent) + "%", "");
             }
 
             @Override
             public void onFileRequestFinish(@Nullable File file) {
                 super.onFileRequestFinish(file);
-                completeBytes = 0;
-                totalBytes = 0;
                 showResult("下载完成", "");
             }
         });

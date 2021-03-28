@@ -50,7 +50,7 @@ dependencies {
     implementation rootProject.ext.dependencies["lib_okhttp"]
     implementation rootProject.ext.dependencies["gson"]
 
-    implementation 'com.github.rhinoSp:LibLog:v1.4.5'
+    implementation 'com.github.rhinoSp:LibLog:v1.9.3'
 //    implementation(name: 'com.rhino.http-libOkHttp-v1.8.2', ext: 'aar')
 
     api project(path: ':libOkHttp')
