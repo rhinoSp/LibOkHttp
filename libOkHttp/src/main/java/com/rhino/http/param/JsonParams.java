@@ -20,7 +20,7 @@ public class JsonParams extends HttpParams {
      */
     private JsonConvert jsonConvert;
 
-    private JsonParams() {
+    public JsonParams() {
     }
 
     public static JsonParams create() {

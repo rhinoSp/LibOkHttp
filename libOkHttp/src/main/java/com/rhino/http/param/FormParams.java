@@ -15,7 +15,7 @@ public class FormParams extends HttpParams {
      */
     public Map<String, String> formBodyMap = new HashMap<>(2);
 
-    private FormParams() {
+    public FormParams() {
     }
 
     public static FormParams create() {

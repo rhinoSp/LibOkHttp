@@ -29,7 +29,7 @@ public class FileParams extends HttpParams {
      */
     public boolean breakpointResumeAble = true;
 
-    private FileParams() {
+    public FileParams() {
     }
 
     public static FileParams create() {
