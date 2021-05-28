@@ -239,8 +239,12 @@ public class OkHttpUtils {
         return "";
     }
 
+    public void doPut(String url, CallBack callBack) {
+        doPut(url, url, null, callBack);
+    }
+
     public void doPut(String url, HttpParams param, CallBack callBack) {
-        doPut(url, null, param, callBack);
+        doPut(url, url, param, callBack);
     }
 
     public void doPut(String url, Object tag, HttpParams param, CallBack callBack) {
@@ -285,8 +289,12 @@ public class OkHttpUtils {
         return "";
     }
 
+    public void doDelete(String url, CallBack callBack) {
+        doDelete(url, url, null, callBack);
+    }
+
     public void doDelete(String url, HttpParams param, CallBack callBack) {
-        doDelete(url, null, param, callBack);
+        doDelete(url, url, param, callBack);
     }
 
     public void doDelete(String url, Object tag, HttpParams param, CallBack callBack) {
