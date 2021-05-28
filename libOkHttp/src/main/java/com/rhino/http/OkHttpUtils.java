@@ -169,6 +169,20 @@ public class OkHttpUtils {
         }
     }
 
+    public void cancelAllRequest() {
+        if (okHttpClient == null) {
+            return;
+        }
+        for (Call call : okHttpClient.dispatcher().queuedCalls()) {
+            LogUtils.w(TAG, "Cancel request");
+            call.cancel();
+        }
+        for (Call call : okHttpClient.dispatcher().runningCalls()) {
+            LogUtils.w(TAG, "Cancel request");
+            call.cancel();
+        }
+    }
+
     public void doPost(String url, CallBack callBack) {
         doPost(url, null, callBack);
     }
@@ -398,14 +412,14 @@ public class OkHttpUtils {
         downloadFile(url, url, param, saveFilePath, callBack);
     }
 
-    public void downloadFile(final String url, Object tag, FileParams param, final String saveFilePath, final CallBack callBack) {
+    public void downloadFile(final String url, Object tag, @Nullable FileParams param, final String saveFilePath, final CallBack callBack) {
         LogUtils.i(TAG, "-------------------------------------------------");
         LogUtils.i(TAG, "url = " + url);
         LogUtils.i(TAG, "saveFilePath = " + saveFilePath);
         Request.Builder requestBuilder = buildRequestBuilder(param).url(url).tag(tag);
         File saveFile = new File(saveFilePath);
-        int completeBytes = param.breakpointResumeAble ? getFileSize(saveFile) : 0;
-        if (!param.breakpointResumeAble && saveFile.exists()) {
+        int completeBytes = param != null && param.breakpointResumeAble ? getFileSize(saveFile) : 0;
+        if ((param == null || !param.breakpointResumeAble) && saveFile.exists()) {
             // 不支持断点续传，文件存在就删除
             saveFile.delete();
         }
