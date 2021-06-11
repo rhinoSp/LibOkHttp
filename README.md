@@ -1,9 +1,6 @@
 # LibOkHttp
 The library for OkHttp.
 
-# ScreenCapture
-![](https://github.com/rhinoSp/LibWheelView/blob/master/ScreenCapture/ScreenCapture.gif)  
-
 # How to
 To get a Git project into your build:
 

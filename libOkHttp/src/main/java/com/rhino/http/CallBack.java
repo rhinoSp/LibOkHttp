@@ -1,6 +1,6 @@
 package com.rhino.http;
 
-import android.support.annotation.Nullable;
+import androidx.annotation.Nullable;
 
 import com.rhino.http.param.HttpParams;
 import com.rhino.log.LogUtils;

@@ -2,13 +2,14 @@ apply plugin: 'com.android.application'
 apply from: "pkg.gradle"
 
 android {
-    compileSdkVersion rootProject.android.compileSdkVersion
+    compileSdkVersion pkgCompileSdkVersion
     defaultConfig {
-        minSdkVersion rootProject.android.minSdkVersion
-        targetSdkVersion rootProject.android.targetSdkVersion
+        minSdkVersion pkgMinSdkVersion
+        targetSdkVersion pkgTargetSdkVersion
+
+        applicationId apkApplicationId
         versionCode apkVersionCode
         versionName apkVersionName
-        applicationId "com.rhino.http.demo"
 
         multiDexEnabled true
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
@@ -42,16 +43,20 @@ android {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
+    buildFeatures {
+        dataBinding = true
+    }
 }
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
-    implementation rootProject.ext.dependencies["appcompat-v7"]
-    implementation rootProject.ext.dependencies["lib_okhttp"]
-    implementation rootProject.ext.dependencies["gson"]
+    implementation rootProject.ext.appcompat
+    implementation rootProject.ext.material
+    implementation rootProject.ext.constraintlayout
+    implementation rootProject.ext.okhttp3_okhttp
+    implementation rootProject.ext.gson
 
-    implementation 'com.github.rhinoSp:LibLog:v1.9.3'
-//    implementation(name: 'com.rhino.http-libOkHttp-v1.8.2', ext: 'aar')
+    implementation rootProject.ext.rhinoLog
 
     api project(path: ':libOkHttp')
 }
